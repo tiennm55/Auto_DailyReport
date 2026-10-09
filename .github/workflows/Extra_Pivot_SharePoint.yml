@@ -27,9 +27,9 @@ jobs:
           SHAREPOINT_DOMAIN: "88p264.sharepoint.com"
           
           # Đổi đường dẫn bỏ qua "Shared Documents" vì API tự hiểu đó là Root Drive
-          SRC_FOLDER: "/C5-Insight/05.ids.pivot"
-          OUT_CSV_FOLDER: "/C5-Insight/01.sales.month"
-          OUT_PARQUET_FOLDER: "/C5-Insight/02.sales.month.par"
+          SRC_FOLDER: "/C5-Insight/05_ids_pivot"
+          OUT_CSV_FOLDER: "/C5-Insight/01_sales_mo"
+          OUT_PARQUET_FOLDER: "/C5-Insight/02_sales_mo_parquet"
         run: |
           python - <<'PYCODE'
           import os, io, zipfile, requests, pandas as pd
