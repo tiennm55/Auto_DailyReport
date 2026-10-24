@@ -53,7 +53,7 @@ jobs:
           TENANT_ID = os.environ["TENANT_ID"]
           CLIENT_ID = os.environ["CLIENT_ID"]
           CLIENT_SECRET = os.environ["CLIENT_SECRET"]
-          IVY_PASSWORD = os.environ["IVY_PASSWORD"]
+          IVY_PASSWORD = os.environ["IVY_PASSWORD"].strip()
           SHAREPOINT_DOMAIN = os.environ["SHAREPOINT_DOMAIN"]
           OUT_FOLDER = os.environ["OUT_FOLDER"]
           RUN_MODE = os.environ.get("RUN_MODE", "auto")
@@ -202,8 +202,13 @@ jobs:
                   page.get_by_role("button", name="Login").click()
                   page.wait_for_load_state("networkidle")
                   time.sleep(5)
+                  print(f"🔑 Sau đăng nhập: {page.title()} | {page.url}")
+                  os.makedirs("debug", exist_ok=True)
+                  page.screenshot(path="debug/00_sau_dang_nhap.png", full_page=True)
 
                   page.get_by_role("link", name=" Reports ").click()
+                  time.sleep(3)
+                  page.screenshot(path="debug/01_reports.png", full_page=True)
 
                   for branch in BRANCHES:
                       try:
@@ -222,6 +227,10 @@ jobs:
 
                       except Exception as e:
                           print(f"⚠️ Lỗi tại {branch['name']}: {e}")
+                          try:
+                              page.screenshot(path=f"debug/loi_{branch['code']}.png", full_page=True)
+                          except Exception:
+                              pass
                           continue
 
                   browser.close()
@@ -231,3 +240,12 @@ jobs:
               print(f"❌ Lỗi hệ thống nghiêm trọng: {e}")
               exit(1)
           PYCODE
+
+      - name: Lưu ảnh chụp màn hình để kiểm tra lỗi
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ivy-debug
+          path: debug/
+          if-no-files-found: ignore
+          retention-days: 1
