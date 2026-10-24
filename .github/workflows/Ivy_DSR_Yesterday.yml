@@ -1,11 +1,13 @@
 name: BÁO CÁO BAO TRÙM HẰNG NGÀY 3 CHI NHÁNH
 
 on:
-  # Chạy sau khi "Xử lý pivot ngày ở Share Point" (Extra_Pivot_SharePoint.yml) hoàn tất.
-  # Workflow đó được Power Automate gọi qua HTTP; lượt tối lấy ngày hôm nay, lượt sáng (03:00–15:00 VN) lấy lại ngày hôm qua.
+  # Lượt tối: chạy sau khi "Xử lý pivot ngày ở Share Point" (Extra_Pivot_SharePoint.yml) hoàn tất, lấy ngày hôm nay.
   workflow_run:
     workflows: ["Xử lý pivot ngày ở Share Point"]
     types: [completed]
+  # Lượt sáng: 09:00 VN, lấy lại ngày hôm qua và đưa file tối hôm trước vào thùng rác.
+  schedule:
+    - cron: '0 2 * * *' # 09:00 VN hằng ngày
   workflow_dispatch:
     inputs:
       mode:
@@ -39,7 +41,7 @@ jobs:
           IVY_PASSWORD: ${{ secrets.pass_word_ivy }}
           USER_EMAIL: "tiennm@tuanvietc5.id.vn"
           OUT_FOLDER: "/1.Job/2425/1. Tracking/Daily Sell Report/Data"
-          RUN_MODE: ${{ github.event.inputs.mode || 'auto' }}
+          RUN_MODE: ${{ github.event_name == 'schedule' && 'sang' || github.event_name == 'workflow_run' && 'toi' || github.event.inputs.mode || 'auto' }}
         run: |
           python - <<'PYCODE'
           import os, time, requests
@@ -72,7 +74,7 @@ jobs:
           # 2. Xác định chế độ chạy và ngày cần lấy
           now_vn = get_vn_now()
           if RUN_MODE == "auto":
-              # Lượt 09:00 sáng (cho phép trễ) → sang; lượt 21:30 tối → toi
+              # Chạy tay chế độ auto: trước 15:00 VN → sang, sau đó → toi
               RUN_MODE = "sang" if 3 <= now_vn.hour < 15 else "toi"
 
           if RUN_MODE == "sang":
