@@ -203,16 +203,9 @@ jobs:
                   page.get_by_role("button", name="Login").click()
                   page.wait_for_load_state("networkidle")
                   time.sleep(5)
-                  print(f"🔑 Sau đăng nhập: {page.title()} | {page.url}")
-                  os.makedirs("debug", exist_ok=True)
-                  page.screenshot(path="debug/00_sau_dang_nhap.png", full_page=True)
 
                   page.get_by_role("link", name=" Reports ").click()
                   time.sleep(3)
-                  page.screenshot(path="debug/01_reports.png", full_page=True)
-                  links = [t.strip() for t in page.locator("a").all_inner_texts() if t.strip()]
-                  print("🔗 Menu:", [t for t in links if "DSR" in t.upper() or "REPORT" in t.upper()][:40])
-                  print("🖼️ Frames:", [f.url for f in page.frames][:10])
 
                   for branch in BRANCHES:
                       try:
@@ -231,10 +224,6 @@ jobs:
 
                       except Exception as e:
                           print(f"⚠️ Lỗi tại {branch['name']}: {e}")
-                          try:
-                              page.screenshot(path=f"debug/loi_{branch['code']}.png", full_page=True)
-                          except Exception:
-                              pass
                           continue
 
                   browser.close()
@@ -244,12 +233,3 @@ jobs:
               print(f"❌ Lỗi hệ thống nghiêm trọng: {e}")
               exit(1)
           PYCODE
-
-      - name: Lưu ảnh chụp màn hình để kiểm tra lỗi
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ivy-debug
-          path: debug/
-          if-no-files-found: ignore
-          retention-days: 1
