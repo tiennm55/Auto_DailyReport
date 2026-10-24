@@ -45,7 +45,7 @@ jobs:
           RUN_MODE: ${{ github.event_name == 'schedule' && 'sang' || github.event_name == 'workflow_run' && 'toi' || github.event.inputs.mode || 'auto' }}
         run: |
           python - <<'PYCODE'
-          import os, time, requests
+          import os, re, time, requests
           from datetime import datetime, timedelta
           from playwright.sync_api import sync_playwright
 
@@ -139,7 +139,8 @@ jobs:
               print(f"🌀 Đang xử lý: {branch['name']}...")
 
               # Reset về trang DSR Today
-              page.get_by_role("link", name=" DSR Today", exact=True).click()
+              # Tên link có thể kèm ký tự icon ở đầu, nên so theo chữ "DSR Today" (không lấy "DSR Today - 1 Hour")
+              page.locator("a").filter(has_text=re.compile(r"^\W*DSR Today\s*$")).first.click()
               time.sleep(3)
 
               iframe_main = page.frame_locator("#iContent")
