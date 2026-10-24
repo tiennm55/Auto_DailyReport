@@ -2,7 +2,7 @@ name: BÁO CÁO BAO TRÙM HẰNG NGÀY 3 CHI NHÁNH
 
 on:
   # Chạy sau khi "Xử lý pivot ngày ở Share Point" (Extra_Pivot_SharePoint.yml) hoàn tất.
-  # Workflow đó chạy lúc 21:30 VN (lấy ngày hôm nay) và 09:00 VN (lấy lại ngày hôm qua).
+  # Workflow đó được Power Automate gọi qua HTTP; lượt tối lấy ngày hôm nay, lượt sáng (03:00–15:00 VN) lấy lại ngày hôm qua.
   workflow_run:
     workflows: ["Xử lý pivot ngày ở Share Point"]
     types: [completed]
