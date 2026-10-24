@@ -209,6 +209,9 @@ jobs:
                   page.get_by_role("link", name=" Reports ").click()
                   time.sleep(3)
                   page.screenshot(path="debug/01_reports.png", full_page=True)
+                  links = [t.strip() for t in page.locator("a").all_inner_texts() if t.strip()]
+                  print("🔗 Menu:", [t for t in links if "DSR" in t.upper() or "REPORT" in t.upper()][:40])
+                  print("🖼️ Frames:", [f.url for f in page.frames][:10])
 
                   for branch in BRANCHES:
                       try:
