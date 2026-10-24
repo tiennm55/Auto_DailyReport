@@ -1,12 +1,23 @@
-name: BÁO CÁO BAO TRÙM HẰNG NGÀY 13 CHI NHÁNH
+name: BÁO CÁO BAO TRÙM HẰNG NGÀY 3 CHI NHÁNH
 
 on:
-  schedule:
-    - cron: '30 14 * * *' # 21:30 VN hàng ngày
+  # Chạy sau khi "Xử lý pivot ngày ở Share Point" (Extra_Pivot_SharePoint.yml) hoàn tất.
+  # Workflow đó chạy lúc 21:30 VN (lấy ngày hôm nay) và 09:00 VN (lấy lại ngày hôm qua).
+  workflow_run:
+    workflows: ["Xử lý pivot ngày ở Share Point"]
+    types: [completed]
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'auto = theo giờ chạy; toi = lấy ngày hôm nay; sang = lấy lại ngày hôm qua và đưa file tối hôm trước vào thùng rác'
+        required: true
+        default: 'auto'
+        type: choice
+        options: [auto, toi, sang]
 
 jobs:
   sync_dsr:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion != 'cancelled'
     runs-on: ubuntu-latest
 
     steps:
@@ -20,17 +31,18 @@ jobs:
           pip install playwright requests
           playwright install chromium
 
-      - name: Run IvyCPG Scraper for All Branches
+      - name: Run IvyCPG Scraper for 3 Branches
         env:
           TENANT_ID: ${{ secrets.TENANT_ID }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+          IVY_PASSWORD: ${{ secrets.pass_word_ivy }}
           USER_EMAIL: "tiennm@tuanvietc5.id.vn"
           OUT_FOLDER: "/1.Job/2425/1. Tracking/Daily Sell Report/Data"
-          DAYS_OFFSET: "0"
+          RUN_MODE: ${{ github.event.inputs.mode || 'auto' }}
         run: |
           python - <<'PYCODE'
-          import os, time, requests, io
+          import os, time, requests
           from datetime import datetime, timedelta
           from playwright.sync_api import sync_playwright
 
@@ -38,30 +50,38 @@ jobs:
           TENANT_ID = os.environ["TENANT_ID"]
           CLIENT_ID = os.environ["CLIENT_ID"]
           CLIENT_SECRET = os.environ["CLIENT_SECRET"]
+          IVY_PASSWORD = os.environ["IVY_PASSWORD"]
           USER_EMAIL = os.environ["USER_EMAIL"]
           OUT_FOLDER = os.environ["OUT_FOLDER"]
-          DAYS_OFFSET = int(os.environ.get("DAYS_OFFSET", 0))
+          RUN_MODE = os.environ.get("RUN_MODE", "auto")
           GRAPH_API = "https://graph.microsoft.com/v1.0"
 
-          # DANH SÁCH 13 CHI NHÁNH TỪ ẢNH GỬI
+          if not IVY_PASSWORD:
+              print("❌ Chưa có secret pass_word_ivy trong Settings → Secrets and variables → Actions.")
+              exit(1)
+
           BRANCHES = [
               {"name": "CN BINH DINH", "code": "BDINH"},
-              {"name": "CN DA NANG", "code": "DNANG"},
-              {"name": "CN HA TINH", "code": "HTINH"},
-              {"name": "CN HUE", "code": "HUE"},
               {"name": "CN KHANH HOA", "code": "KHOA"},
-              {"name": "CN PHU YEN", "code": "PHYEN"},
-              {"name": "CN QUANG BINH", "code": "QBINH"},
-              {"name": "CN QUANG NAM", "code": "QNAM"},
-              {"name": "CN QUANG NGAI", "code": "QNGAI"},
-              {"name": "CN QUANG TRI", "code": "QTRI"},
-              {"name": "CN QUYNH LUU", "code": "QLUU"},
-              {"name": "CN THANH HOA", "code": "THOA"},
-              {"name": "CN VINH", "code": "VINH"}
+              {"name": "CN PHU YEN", "code": "PHYEN"}
           ]
 
           def get_vn_now():
               return datetime.utcnow() + timedelta(hours=7)
+
+          # 2. Xác định chế độ chạy và ngày cần lấy
+          now_vn = get_vn_now()
+          if RUN_MODE == "auto":
+              # Lượt 09:00 sáng (cho phép trễ) → sang; lượt 21:30 tối → toi
+              RUN_MODE = "sang" if 3 <= now_vn.hour < 15 else "toi"
+
+          if RUN_MODE == "sang":
+              target_dt = now_vn - timedelta(days=1)
+          else:
+              # Lượt tối bị trễ qua nửa đêm thì vẫn lấy ngày của tối hôm đó
+              target_dt = now_vn if now_vn.hour >= 3 else now_vn - timedelta(days=1)
+
+          print(f"🕘 Chế độ: {RUN_MODE} | Ngày lấy dữ liệu: {target_dt.strftime('%d/%m/%Y')}")
 
           def get_access_token():
               url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
@@ -74,24 +94,61 @@ jobs:
               res = requests.post(url, data=data)
               return res.json().get("access_token")
 
-          def run_automation_for_branch(page, branch, target_day):
+          def select_date_smart(iframe, target_dt):
+              iframe.get_by_role("textbox", name="Date").click()
+              time.sleep(1)
+              current_now = get_vn_now()
+              diff_month = (current_now.year - target_dt.year) * 12 + (current_now.month - target_dt.month)
+              if diff_month > 0:
+                  for _ in range(diff_month):
+                      iframe.locator(".ui-icon-circle-triangle-w").click()
+                      time.sleep(0.5)
+              iframe.get_by_role("link", name=str(target_dt.day), exact=True).click()
+
+          def list_folder(drive_id, headers):
+              url = f"{GRAPH_API}/drives/{drive_id}/root:{requests.utils.quote(OUT_FOLDER)}:/children?$select=id,name&$top=999"
+              items = []
+              while url:
+                  res = requests.get(url, headers=headers)
+                  if not res.ok:
+                      print(f"⚠️ Không đọc được thư mục {OUT_FOLDER}: {res.text}")
+                      return []
+                  body = res.json()
+                  items.extend(body.get("value", []))
+                  url = body.get("@odata.nextLink")
+              return items
+
+          def recycle_evening_files(drive_id, headers, branch, keep_name):
+              # File lượt tối hôm trước có dạng CODE_ddmmyy_HHMM.xlsx với ngày = ngày lấy dữ liệu
+              prefix = f"{branch['code']}_{target_dt.strftime('%d%m%y')}_"
+              for item in list_folder(drive_id, headers):
+                  name = item["name"]
+                  if not name.startswith(prefix) or not name.lower().endswith(".xlsx") or name == keep_name:
+                      continue
+                  # DELETE trên OneDrive đưa file vào thùng rác (Recycle bin), có thể khôi phục
+                  del_res = requests.delete(f"{GRAPH_API}/drives/{drive_id}/items/{item['id']}", headers=headers)
+                  if del_res.status_code in (200, 204):
+                      print(f"🗑️ Đã đưa vào thùng rác: {name}")
+                  else:
+                      print(f"⚠️ Không xóa được {name}: {del_res.status_code} - {del_res.text}")
+
+          def run_automation_for_branch(page, branch):
               print(f"🌀 Đang xử lý: {branch['name']}...")
-              
+
               # Reset về trang DSR Today
-              page.get_by_role("link", name=" DSR Today", exact=True).click()
+              page.get_by_role("link", name=" DSR Today", exact=True).click()
               time.sleep(3)
 
               iframe_main = page.frame_locator("#iContent")
-              
+
               # Chọn Chi nhánh
               iframe_main.get_by_role("textbox").first.click()
               iframe_main.get_by_role("list").get_by_text(branch['name'], exact=True).click()
               time.sleep(1)
-              
+
               # Chọn Ngày
-              iframe_main.get_by_role("textbox", name="Date").click()
-              iframe_main.get_by_role("link", name=target_day, exact=True).click()
-              
+              select_date_smart(iframe_main, target_dt)
+
               # Bấm xem báo cáo
               iframe_main.get_by_text("DSR Today").click()
               time.sleep(2)
@@ -107,15 +164,14 @@ jobs:
                       iframe_report.get_by_role("link", name="Excel").click()
                   page1 = page1_info.value
                   page1.close()
-                  
+
               download = download_info.value
-              now_vn = get_vn_now()
-              file_name = f"{branch['code']}_{now_vn.strftime('%d%m%y_%H%M')}.xlsx"
-              
+              file_name = f"{branch['code']}_{target_dt.strftime('%d%m%y')}_{get_vn_now().strftime('%H%M')}.xlsx"
+
               temp_path = download.path()
               with open(temp_path, "rb") as f:
                   content = f.read()
-              
+
               return file_name, content
 
           # --- Main Execution ---
@@ -128,37 +184,38 @@ jobs:
               with sync_playwright() as p:
                   browser = p.chromium.launch(headless=True)
                   page = browser.new_page()
-                  
+
                   # Đăng nhập
                   page.goto("https://png-vn.ivycpg.com/web/")
                   page.get_by_role("textbox", name="Username *").fill("2001584413.admin")
-                  page.get_by_role("textbox", name="Password *").fill("TVIET@2025#$")
+                  page.get_by_role("textbox", name="Password *").fill(IVY_PASSWORD)
                   page.get_by_role("button", name="Login").click()
                   page.wait_for_load_state("networkidle")
                   time.sleep(5)
-                  
-                  page.get_by_role("link", name=" Reports ").click()
-                  
-                  target_day = str((get_vn_now() + timedelta(days=DAYS_OFFSET)).day)
+
+                  page.get_by_role("link", name=" Reports ").click()
 
                   for branch in BRANCHES:
                       try:
-                          fname, fcontent = run_automation_for_branch(page, branch, target_day)
-                          
+                          fname, fcontent = run_automation_for_branch(page, branch)
+
                           upload_url = f"{GRAPH_API}/drives/{drive_id}/root:{OUT_FOLDER}/{fname}:/content?@microsoft.graph.conflictBehavior=replace"
                           up_res = requests.put(upload_url, headers=headers, data=fcontent)
-                          
+
                           if up_res.ok:
                               print(f"✅ {fname} -> OneDrive OK")
+                              # Lượt sáng: chỉ bỏ file tối hôm trước khi file mới đã lên thành công
+                              if RUN_MODE == "sang":
+                                  recycle_evening_files(drive_id, headers, branch, fname)
                           else:
                               print(f"❌ {fname} Upload Fail: {up_res.text}")
-                              
+
                       except Exception as e:
                           print(f"⚠️ Lỗi tại {branch['name']}: {e}")
                           continue
 
                   browser.close()
-                  print("\n🏁 Đã hoàn thành tải dữ liệu cho tất cả chi nhánh!")
+                  print("\n🏁 Đã hoàn thành tải dữ liệu cho 3 chi nhánh!")
 
           except Exception as e:
               print(f"❌ Lỗi hệ thống nghiêm trọng: {e}")

@@ -30,6 +30,7 @@ jobs:
           USER_EMAIL: "tiennm@tuanvietc5.id.vn"
           OUT_FOLDER: "/1.Job/2425/1. Tracking/Daily Sell Report/Data"
           DAYS_RANGE: ${{ github.event.inputs.days_back }}
+          IVY_PASSWORD: ${{ secrets.pass_word_ivy }}
         run: |
           python - <<'PYCODE'
           import os, time, requests, io
@@ -124,7 +125,7 @@ jobs:
                       # Đăng nhập lại
                       page.goto("https://png-vn.ivycpg.com/web/")
                       page.get_by_role("textbox", name="Username *").fill("2001584413.admin")
-                      page.get_by_role("textbox", name="Password *").fill("TVIET@2025#$")
+                      page.get_by_role("textbox", name="Password *").fill(os.environ["IVY_PASSWORD"])
                       page.get_by_role("button", name="Login").click()
                       page.wait_for_load_state("networkidle")
                       page.get_by_role("link", name=" Reports ").click()

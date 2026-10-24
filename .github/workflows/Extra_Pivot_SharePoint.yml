@@ -1,6 +1,9 @@
 name: Xử lý pivot ngày ở Share Point
 
 on:
+  schedule:
+    - cron: '30 14 * * *' # 21:30 VN hằng ngày
+    - cron: '0 2 * * *'   # 09:00 VN hằng ngày
   workflow_dispatch:
 
 jobs:
