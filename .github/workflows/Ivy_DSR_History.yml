@@ -27,31 +27,29 @@ jobs:
           TENANT_ID: ${{ secrets.TENANT_ID }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-          USER_EMAIL: "tiennm@tuanvietc5.id.vn"
-          OUT_FOLDER: "/1.Job/2425/1. Tracking/Daily Sell Report/Data"
+          # Thư viện Documents của SharePoint (giống Ivy_DSR_Yesterday.yml)
+          SHAREPOINT_DOMAIN: "88p264.sharepoint.com"
+          OUT_FOLDER: "/C5-Insight/09_coverage"
           DAYS_RANGE: ${{ github.event.inputs.days_back }}
+          IVY_PASSWORD: ${{ secrets.pass_word_ivy }}
         run: |
           python - <<'PYCODE'
-          import os, time, requests, io
+          import os, re, time, requests, io
           from datetime import datetime, timedelta
           from playwright.sync_api import sync_playwright
 
           TENANT_ID = os.environ["TENANT_ID"]
           CLIENT_ID = os.environ["CLIENT_ID"]
           CLIENT_SECRET = os.environ["CLIENT_SECRET"]
-          USER_EMAIL = os.environ["USER_EMAIL"]
+          SHAREPOINT_DOMAIN = os.environ["SHAREPOINT_DOMAIN"]
           OUT_FOLDER = os.environ["OUT_FOLDER"]
           DAYS_RANGE = int(os.environ.get("DAYS_RANGE", -30))
           GRAPH_API = "https://graph.microsoft.com/v1.0"
 
           BRANCHES = [
-              {"name": "CN BINH DINH", "code": "BDINH"}, {"name": "CN DA NANG", "code": "DNANG"},
-              {"name": "CN HA TINH", "code": "HTINH"}, {"name": "CN HUE", "code": "HUE"},
-              {"name": "CN KHANH HOA", "code": "KHOA"}, {"name": "CN PHU YEN", "code": "PHYEN"},
-              {"name": "CN QUANG BINH", "code": "QBINH"}, {"name": "CN QUANG NAM", "code": "QNAM"},
-              {"name": "CN QUANG NGAI", "code": "QNGAI"}, {"name": "CN QUANG TRI", "code": "QTRI"},
-              {"name": "CN QUYNH LUU", "code": "QLUU"}, {"name": "CN THANH HOA", "code": "THOA"},
-              {"name": "CN VINH", "code": "VINH"}
+              {"name": "CN BINH DINH", "code": "BDINH"},
+              {"name": "CN KHANH HOA", "code": "KHOA"},
+              {"name": "CN PHU YEN", "code": "PHYEN"}
           ]
 
           def get_vn_now():
@@ -75,7 +73,8 @@ jobs:
 
           def download_report(page, branch, target_dt):
               print(f"   [{get_vn_now().strftime('%H:%M:%S')}] 🌀 {branch['code']} | {target_dt.strftime('%d/%m/%Y')}")
-              page.get_by_role("link", name=" DSR Today", exact=True).click()
+              # Tên link có thể kèm ký tự icon ở đầu, nên so theo chữ "DSR Today" (không lấy "DSR Today - 1 Hour")
+              page.locator("a").filter(has_text=re.compile(r"^\W*DSR Today\s*$")).first.click()
               time.sleep(2)
               iframe_main = page.frame_locator("#iContent")
               iframe_main.get_by_role("textbox").first.click()
@@ -107,8 +106,15 @@ jobs:
           try:
               token = get_access_token()
               headers = {"Authorization": f"Bearer {token}"}
-              drive_res = requests.get(f"{GRAPH_API}/users/{USER_EMAIL}/drive", headers=headers).json()
-              drive_id = drive_res["id"]
+              site_info = requests.get(f"{GRAPH_API}/sites/{SHAREPOINT_DOMAIN}", headers=headers).json()
+              if "id" not in site_info:
+                  print("❌ Không lấy được Site ID:", site_info)
+                  exit(1)
+              drive_info = requests.get(f"{GRAPH_API}/sites/{site_info['id']}/drive", headers=headers).json()
+              if "id" not in drive_info:
+                  print("❌ Không lấy được Drive ID:", drive_info)
+                  exit(1)
+              drive_id = drive_info["id"]
 
               # Chạy ngược từ ngày xa nhất
               for i in range(DAYS_RANGE, 1):
@@ -124,7 +130,7 @@ jobs:
                       # Đăng nhập lại
                       page.goto("https://png-vn.ivycpg.com/web/")
                       page.get_by_role("textbox", name="Username *").fill("2001584413.admin")
-                      page.get_by_role("textbox", name="Password *").fill("TVIET@2025#$")
+                      page.get_by_role("textbox", name="Password *").fill(os.environ["IVY_PASSWORD"])
                       page.get_by_role("button", name="Login").click()
                       page.wait_for_load_state("networkidle")
                       page.get_by_role("link", name=" Reports ").click()
@@ -135,7 +141,7 @@ jobs:
                               upload_url = f"{GRAPH_API}/drives/{drive_id}/root:{OUT_FOLDER}/{fname}:/content?@microsoft.graph.conflictBehavior=replace"
                               up_res = requests.put(upload_url, headers=headers, data=fcontent)
                               if up_res.ok: print(f"      ✅ Upload xong: {fname}")
-                              else: print(f"      ❌ Lỗi OneDrive {fname}: {up_res.text}")
+                              else: print(f"      ❌ Lỗi SharePoint {fname}: {up_res.text}")
                               time.sleep(1)
                           except Exception as e:
                               print(f"      ⚠️ Lỗi {branch['code']}: {e}")
