@@ -5,9 +5,8 @@ on:
   workflow_run:
     workflows: ["Xử lý pivot ngày ở Share Point"]
     types: [completed]
-  # Lượt sáng: 09:00 VN, lấy lại ngày hôm qua và đưa file tối hôm trước vào thùng rác.
-  schedule:
-    - cron: '0 2 * * *' # 09:00 VN hằng ngày
+  # Lượt sáng: Power Automate gọi workflow_dispatch lúc 09:00 VN với mode = sang
+  # (không dùng cron của GitHub vì thường bị trễ vài tiếng).
   workflow_dispatch:
     inputs:
       mode:
